@@ -26,9 +26,26 @@ mongoose.connect(process.env.MONGODB_URI)
         console.error("MongoDB connection failed:", error.message);
     });
 
+const cache = require("./cache");
+
 // Health check endpoint
 app.get("/health", (req, res) => {
     res.status(200).json({ status: "OK", timestamp: new Date().toISOString() });
+});
+
+// Cache Debug & Analytics Endpoints (Supplementary Problem 2 & 3)
+app.get("/cache/stats", (req, res) => {
+    res.status(200).json({
+        status: "success",
+        data: cache.getCustomStats()
+    });
+});
+app.post("/cache/clear", (req, res) => {
+    cache.flushAll();
+    res.status(200).json({
+        message: "In-memory cache cleared successfully",
+        data: cache.getCustomStats()
+    });
 });
 
 // Authentication Routes (Supports /auth/register, /auth/login, /auth/me)
