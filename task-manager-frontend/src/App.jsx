@@ -1,9 +1,9 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import "./App.css";
 
 const API_BASE = "http://localhost:5000";
 
-/* ── Minimal SVG Icons ── */
+/* ── Minimal Subtle SVG Icons ── */
 const IconCheck = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="20 6 9 17 4 12" />
@@ -14,13 +14,6 @@ const IconPlus = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <line x1="12" y1="5" x2="12" y2="19" />
     <line x1="5" y1="12" x2="19" y2="12" />
-  </svg>
-);
-
-const IconEdit = () => (
-  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 20h9" />
-    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
   </svg>
 );
 
@@ -39,20 +32,6 @@ const IconLogOut = () => (
   </svg>
 );
 
-const IconShield = () => (
-  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-  </svg>
-);
-
-const IconAlert = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="10" />
-    <line x1="12" y1="8" x2="12" y2="12" />
-    <line x1="12" y1="16" x2="12.01" y2="16" />
-  </svg>
-);
-
 const IconZap = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
@@ -67,6 +46,28 @@ const IconRefresh = () => (
   </svg>
 );
 
+const IconBell = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+  </svg>
+);
+
+const IconAlertCircle = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10" />
+    <line x1="12" y1="8" x2="12" y2="12" />
+    <line x1="12" y1="16" x2="12.01" y2="16" />
+  </svg>
+);
+
+const IconClock = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10" />
+    <polyline points="12 6 12 12 16 14" />
+  </svg>
+);
+
 function App() {
   // Authentication state
   const [token, setToken] = useState(() => localStorage.getItem("tm_auth_token") || "");
@@ -77,223 +78,195 @@ function App() {
   const [authPassword, setAuthPassword] = useState("");
   const [authSubmitting, setAuthSubmitting] = useState(false);
 
+  // Active view tab: "dashboard", "events", "benchmark", "analysis"
+  const [activeTab, setActiveTab] = useState("dashboard");
+
   // Task list state
   const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [filter, setFilter] = useState("all");
-  const [loading, setLoading] = useState(false);
+  const [listenerDelay, setListenerDelay] = useState(2000);
+  const [simulateErrorInCreate, setSimulateErrorInCreate] = useState(false);
 
-  // Cache & Performance State (Practical 9)
-  const [bypassCache, setBypassCache] = useState(false);
-  const [cacheMeta, setCacheMeta] = useState({
-    status: null, // 'HIT' | 'MISS' | 'BYPASS'
-    serverTime: null,
-    clientTime: null,
-    key: null,
-  });
-  const [cacheStats, setCacheStats] = useState({
-    hits: 0,
-    misses: 0,
-    totalLookups: 0,
-    hitRatio: "0.0%",
-    activeKeysCount: 0,
-    stdTTL: 60,
-  });
-  const [benchmarkResult, setBenchmarkResult] = useState(null);
-  const [benchmarking, setBenchmarking] = useState(false);
-  const [singleTaskInspect, setSingleTaskInspect] = useState(null);
-
-  // Edit task modal state
-  const [editingTask, setEditingTask] = useState(null);
-  const [editTitle, setEditTitle] = useState("");
-  const [editDescription, setEditDescription] = useState("");
-
-  // Notification banners
+  // Notification and live banner state
   const [notice, setNotice] = useState(null);
 
+  // Background Event Stream state
+  const [eventLogs, setEventLogs] = useState([]);
+  const [eventsLoading, setEventsLoading] = useState(false);
+  const [autoPollEvents, setAutoPollEvents] = useState(true);
+
+  // Benchmark comparison state
+  const [benchmarking, setBenchmarking] = useState(false);
+  const [benchmarkResult, setBenchmarkResult] = useState(null);
+
+  const noticeTimeoutRef = useRef(null);
+
   const showNotice = (text, type = "info") => {
-    setNotice({ text, type });
+    if (noticeTimeoutRef.current) clearTimeout(noticeTimeoutRef.current);
+    setNotice({ text, type, timestamp: new Date().toLocaleTimeString() });
+    noticeTimeoutRef.current = setTimeout(() => setNotice(null), 5000);
   };
 
-  useEffect(() => {
-    if (!notice) return;
-    const t = setTimeout(() => setNotice(null), 4000);
-    return () => clearTimeout(t);
-  }, [notice]);
-
-  const handleAuthExpired = useCallback((customMsg) => {
-    localStorage.removeItem("tm_auth_token");
-    setToken("");
-    setUser(null);
-    setTasks([]);
-    setAuthMode("login");
-    showNotice(customMsg || "Session expired. Please sign in again.", "error");
-  }, []);
-
+  // Helper: Authenticated fetch
   const authFetch = useCallback(
-    async (endpoint, options = {}) => {
-      const activeToken = token || localStorage.getItem("tm_auth_token");
+    async (url, options = {}) => {
       const headers = {
         "Content-Type": "application/json",
-        ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {}),
-        ...options.headers,
+        ...(options.headers || {}),
       };
-
-      const res = await fetch(`${API_BASE}${endpoint}`, {
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+      const res = await fetch(`${API_BASE}${url}`, {
         ...options,
         headers,
       });
 
       if (res.status === 401) {
-        const errorData = await res.json().catch(() => ({}));
-        handleAuthExpired(errorData.message || "Session expired. Redirecting to login...");
-        throw new Error(errorData.message || "Unauthorized (401)");
+        localStorage.removeItem("tm_auth_token");
+        setToken("");
+        setUser(null);
+        showNotice("Session expired or unauthorized. Please log in.", "error");
+        throw new Error("401 Unauthorized");
       }
-
       return res;
     },
-    [token, handleAuthExpired]
+    [token]
   );
 
-  // Fetch cache analytics
-  const fetchCacheStats = useCallback(async () => {
-    try {
-      const res = await fetch(`${API_BASE}/cache/stats`);
-      if (res.ok) {
-        const json = await res.json();
-        setCacheStats(json.data || {});
-      }
-    } catch {
-      // Ignore background stats fetch errors
-    }
-  }, []);
-
-  // Fetch Tasks with Cache Monitoring
-  const fetchTasks = useCallback(
-    async (forceBypass = false) => {
-      try {
-        setLoading(true);
-        const shouldBypass = forceBypass || bypassCache;
-        const endpoint = shouldBypass ? "/tasks?nocache=true" : "/tasks";
-
-        const startClient = performance.now();
-        const res = await authFetch(endpoint);
-        const clientDuration = (performance.now() - startClient).toFixed(1);
-
-        if (res.ok) {
-          const data = await res.json();
-          setTasks(data);
-
-          const cacheHeader = res.headers.get("x-cache") || (shouldBypass ? "BYPASS" : "MISS");
-          const serverTime = res.headers.get("x-response-time") || `${clientDuration}ms`;
-          const cacheKey = res.headers.get("x-cache-key") || "all_tasks";
-
-          setCacheMeta({
-            status: cacheHeader,
-            serverTime,
-            clientTime: `${clientDuration}ms`,
-            key: cacheKey,
-          });
-
-          fetchCacheStats();
-        }
-      } catch (err) {
-        if (!err.message.includes("401")) {
-          showNotice(err.message, "error");
-        }
-      } finally {
-        setLoading(false);
-      }
-    },
-    [authFetch, bypassCache, fetchCacheStats]
-  );
-
-  const fetchUserProfile = useCallback(async () => {
+  // Fetch /auth/me
+  const fetchCurrentUser = useCallback(async () => {
+    if (!token) return;
     try {
       const res = await authFetch("/auth/me");
       if (res.ok) {
         const data = await res.json();
         setUser(data.user);
       }
-    } catch {
-      // Handled in authFetch
-    }
-  }, [authFetch]);
-
-  useEffect(() => {
-    if (token) {
-      fetchUserProfile();
-      fetchTasks();
-      fetchCacheStats();
-    } else {
-      setUser(null);
-      setTasks([]);
-    }
-  }, [token, fetchUserProfile, fetchTasks, fetchCacheStats]);
-
-  // Auth handlers
-  const handleRegister = async (e) => {
-    e.preventDefault();
-    if (!authEmail.trim() || !authPassword.trim()) {
-      showNotice("Please enter email and password.", "error");
-      return;
-    }
-    try {
-      setAuthSubmitting(true);
-      const res = await fetch(`${API_BASE}/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: authName.trim(),
-          email: authEmail.trim(),
-          password: authPassword,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Registration failed");
-
-      localStorage.setItem("tm_auth_token", data.token);
-      setToken(data.token);
-      setUser(data.user);
-      setAuthName("");
-      setAuthEmail("");
-      setAuthPassword("");
-      showNotice("Account registered and signed in.", "success");
     } catch (err) {
-      showNotice(err.message, "error");
+      console.warn("Failed to fetch user profile:", err.message);
+    }
+  }, [token, authFetch]);
+
+  // Fetch task list
+  const fetchTasks = useCallback(async () => {
+    if (!token) return;
+    try {
+      setLoading(true);
+      const res = await authFetch("/tasks");
+      if (res.ok) {
+        const data = await res.json();
+        setTasks(Array.isArray(data) ? data : data.tasks || []);
+      }
+    } catch (err) {
+      if (!err.message.includes("401")) showNotice(err.message, "error");
     } finally {
-      setAuthSubmitting(false);
+      setLoading(false);
+    }
+  }, [token, authFetch]);
+
+  // Fetch Event Audit Logs
+  const fetchEventLogs = useCallback(async () => {
+    try {
+      setEventsLoading(true);
+      const res = await fetch(`${API_BASE}/events/logs`);
+      if (res.ok) {
+        const data = await res.json();
+        setEventLogs(data.logs || []);
+      }
+    } catch (err) {
+      console.warn("Failed to fetch event logs:", err.message);
+    } finally {
+      setEventsLoading(false);
+    }
+  }, []);
+
+  // Clear Event Audit Logs
+  const handleClearEventLogs = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/events/clear`, { method: "POST" });
+      if (res.ok) {
+        setEventLogs([]);
+        showNotice("Event audit buffer cleared.", "info");
+      }
+    } catch (err) {
+      showNotice("Failed to clear event logs", "error");
     }
   };
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    if (!authEmail.trim() || !authPassword.trim()) {
-      showNotice("Please enter email and password.", "error");
-      return;
-    }
+  // Trigger error simulation
+  const handleTriggerErrorSimulation = async () => {
     try {
-      setAuthSubmitting(true);
-      const res = await fetch(`${API_BASE}/auth/login`, {
+      showNotice("Emitting error event into pipeline...", "info");
+      const res = await fetch(`${API_BASE}/events/simulate-error`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: authEmail.trim(),
-          password: authPassword,
+          title: "Simulated SMTP Failure",
+          user: user ? user.name : "TestUser",
         }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showNotice("Simulated error event emitted. Waiting for error listener...", "warning");
+        setTimeout(fetchEventLogs, 2200);
+      }
+    } catch (err) {
+      showNotice("Error triggering simulation", "error");
+    }
+  };
+
+  // Initial load
+  useEffect(() => {
+    if (token) {
+      fetchCurrentUser();
+      fetchTasks();
+    }
+    fetchEventLogs();
+  }, [token, fetchCurrentUser, fetchTasks, fetchEventLogs]);
+
+  // Auto-polling for event stream
+  useEffect(() => {
+    if (!autoPollEvents) return;
+    const interval = setInterval(() => {
+      fetchEventLogs();
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [autoPollEvents, fetchEventLogs]);
+
+  // Auth Submit (Login / Register)
+  const handleAuthSubmit = async (e) => {
+    e.preventDefault();
+    setAuthSubmitting(true);
+    try {
+      const endpoint = authMode === "login" ? "/auth/login" : "/auth/register";
+      const payload =
+        authMode === "login"
+          ? { email: authEmail.trim(), password: authPassword }
+          : { name: authName.trim(), email: authEmail.trim(), password: authPassword };
+
+      const res = await fetch(`${API_BASE}${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Invalid credentials");
+      if (!res.ok) {
+        showNotice(data.message || "Authentication failed", "error");
+        return;
+      }
 
       localStorage.setItem("tm_auth_token", data.token);
       setToken(data.token);
       setUser(data.user);
-      setAuthEmail("");
       setAuthPassword("");
-      showNotice("Signed in successfully.", "success");
+      showNotice(
+        authMode === "login" ? `Welcome back, ${data.user.name}` : "Account created successfully!",
+        "success"
+      );
     } catch (err) {
       showNotice(err.message, "error");
     } finally {
@@ -306,29 +279,35 @@ function App() {
     setToken("");
     setUser(null);
     setTasks([]);
-    setBenchmarkResult(null);
     showNotice("Signed out successfully.", "info");
   };
 
-  // Task CRUD Handlers (with write-invalidation)
-  const handleAddTask = async (e) => {
+  // Task Creation (Demonstrates Step 3: Immediate response + Background listener)
+  const handleCreateTask = async (e) => {
     e.preventDefault();
     if (!title.trim()) {
-      showNotice("Task title is required.", "error");
+      showNotice("Task title cannot be empty", "error");
       return;
     }
+
     try {
       setLoading(true);
+      const reqStart = performance.now();
       const res = await authFetch("/tasks", {
         method: "POST",
         body: JSON.stringify({
           title,
           description,
           completed: false,
+          customDelay: listenerDelay,
+          simulateError: simulateErrorInCreate,
         }),
       });
 
+      const reqEnd = performance.now();
+      const roundTripMs = Math.round(reqEnd - reqStart);
       const data = await res.json();
+
       if (!res.ok) {
         showNotice(data.message || "Failed to create task", "error");
         return;
@@ -337,8 +316,15 @@ function App() {
       setTasks((prev) => [data.task, ...prev]);
       setTitle("");
       setDescription("");
-      showNotice("Task created • In-memory cache invalidated.", "success");
-      fetchCacheStats();
+
+      showNotice(
+        `⚡ Instant Response (${roundTripMs}ms): Task created! Background listener running with ${listenerDelay}ms delay...`,
+        "success"
+      );
+
+      // Refresh event logs immediately to see API timestamp and then after listener completes
+      fetchEventLogs();
+      setTimeout(fetchEventLogs, listenerDelay + 250);
     } catch (err) {
       if (!err.message.includes("401")) showNotice(err.message, "error");
     } finally {
@@ -346,717 +332,771 @@ function App() {
     }
   };
 
-  const handleToggleComplete = async (task) => {
-    try {
-      const res = await authFetch(`/tasks/${task._id}`, {
-        method: "PUT",
-        body: JSON.stringify({ completed: !task.completed }),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        showNotice(data.message || "Failed to update status", "error");
-        return;
-      }
-      setTasks((prev) =>
-        prev.map((t) => (t._id === task._id ? { ...t, completed: !t.completed } : t))
-      );
-      showNotice("Status updated • Cache invalidated.", "info");
-      fetchCacheStats();
-    } catch (err) {
-      if (!err.message.includes("401")) showNotice(err.message, "error");
-    }
-  };
-
-  const handleSaveEdit = async (e) => {
-    e.preventDefault();
-    if (!editingTask) return;
-    try {
-      const res = await authFetch(`/tasks/${editingTask._id}`, {
-        method: "PUT",
-        body: JSON.stringify({
-          title: editTitle,
-          description: editDescription,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        showNotice(data.message || "Failed to update task", "error");
-        return;
-      }
-      setTasks((prev) =>
-        prev.map((t) => (t._id === editingTask._id ? data.task : t))
-      );
-      setEditingTask(null);
-      showNotice("Task updated • Cache invalidated.", "success");
-      fetchCacheStats();
-    } catch (err) {
-      if (!err.message.includes("401")) showNotice(err.message, "error");
-    }
-  };
-
+  // Task Deletion (Demonstrates Supplementary Problem 1: task-deleted event)
   const handleDeleteTask = async (taskId) => {
-    if (!window.confirm("Delete this task?")) return;
     try {
-      const res = await authFetch(`/tasks/${taskId}`, {
-        method: "DELETE",
-      });
+      const reqStart = performance.now();
+      const res = await authFetch(`/tasks/${taskId}`, { method: "DELETE" });
+      const reqEnd = performance.now();
+      const roundTripMs = Math.round(reqEnd - reqStart);
+
       if (!res.ok) {
         const data = await res.json();
         showNotice(data.message || "Failed to delete task", "error");
         return;
       }
-      setTasks((prev) => prev.filter((t) => t._id !== taskId));
-      showNotice("Task deleted • Cache invalidated.", "info");
-      fetchCacheStats();
+
+      setTasks((prev) => prev.filter((t) => t._id !== taskId && t.id !== taskId));
+      showNotice(`🗑️ Deleted instantly in ${roundTripMs}ms! Background task-deleted cleanup dispatched.`, "info");
+
+      fetchEventLogs();
+      setTimeout(fetchEventLogs, 1750);
     } catch (err) {
       if (!err.message.includes("401")) showNotice(err.message, "error");
     }
   };
 
-  // In-Memory Cache Flush
-  const handleFlushCache = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/cache/clear`, { method: "POST" });
-      if (res.ok) {
-        showNotice("In-memory cache flushed completely.", "info");
-        setCacheMeta({ status: null, serverTime: null, clientTime: null, key: null });
-        fetchCacheStats();
-      }
-    } catch (err) {
-      showNotice("Failed to clear cache: " + err.message, "error");
-    }
-  };
-
-  // Inspect Single Task Endpoint (Supplementary Problem 1)
-  const handleInspectSingleTask = async (taskId) => {
-    try {
-      const start = performance.now();
-      const res = await authFetch(`/tasks/${taskId}`);
-      const duration = (performance.now() - start).toFixed(1);
-      const json = await res.json();
-      const cacheStatus = res.headers.get("x-cache") || "MISS";
-      const serverTime = res.headers.get("x-response-time") || `${duration}ms`;
-
-      setSingleTaskInspect({
-        taskId,
-        task: json,
-        cacheStatus,
-        serverTime,
-        clientTime: `${duration}ms`,
-      });
-      fetchCacheStats();
-    } catch (err) {
-      showNotice("Single task lookup failed: " + err.message, "error");
-    }
-  };
-
-  // Automated 3-Sample Benchmark (Steps 5, 6, 7 in PDF)
+  // Run Non-Blocking Benchmark Test
   const handleRunBenchmark = async () => {
+    if (!token) {
+      showNotice("Please sign in to run the benchmark", "warning");
+      return;
+    }
+    setBenchmarking(true);
+    setBenchmarkResult(null);
+
     try {
-      setBenchmarking(true);
-      showNotice("Running 3 uncached & 3 cached requests...", "info");
-
-      // 1. Flush cache first
-      await fetch(`${API_BASE}/cache/clear`, { method: "POST" });
-
-      // 2. Three Uncached requests
-      const uncachedTimes = [];
-      for (let i = 0; i < 3; i++) {
-        const start = performance.now();
-        await authFetch("/tasks?nocache=true");
-        uncachedTimes.push(parseFloat((performance.now() - start).toFixed(2)));
-      }
-
-      // Prime cache with 1 normal request (MISS)
-      await authFetch("/tasks");
-
-      // 3. Three Cached requests (HIT)
-      const cachedTimes = [];
-      for (let i = 0; i < 3; i++) {
-        const start = performance.now();
-        await authFetch("/tasks");
-        cachedTimes.push(parseFloat((performance.now() - start).toFixed(2)));
-      }
-
-      const avgUncached = (uncachedTimes.reduce((a, b) => a + b, 0) / 3).toFixed(2);
-      const avgCached = (cachedTimes.reduce((a, b) => a + b, 0) / 3).toFixed(2);
-      const speedup = (((avgUncached - avgCached) / avgUncached) * 100).toFixed(1);
-
-      setBenchmarkResult({
-        uncached: uncachedTimes,
-        cached: cachedTimes,
-        avgUncached,
-        avgCached,
-        speedup,
+      const benchmarkDelay = 2000;
+      const tStart = performance.now();
+      const res = await authFetch("/tasks", {
+        method: "POST",
+        body: JSON.stringify({
+          title: `Non-Blocking Benchmark Test [${new Date().toLocaleTimeString()}]`,
+          description: "Measuring empirical decoupling between API response and listener finish.",
+          customDelay: benchmarkDelay,
+        }),
       });
+      const tEnd = performance.now();
+      const apiDurationMs = Math.round(tEnd - tStart);
+      const data = await res.json();
 
-      fetchCacheStats();
-      showNotice(`Benchmark complete! Speedup: ${speedup}%`, "success");
+      const createdId = data.task ? (data.task._id || data.task.id) : null;
+      setTasks((prev) => [data.task, ...prev]);
+
+      const initialResult = {
+        taskId: createdId,
+        title: data.task.title,
+        apiDurationMs: apiDurationMs,
+        simulatedDelayMs: benchmarkDelay,
+        apiTimestamp: data.apiResponseTimestamp,
+        listenerCompletedAt: null,
+        status: "waiting_listener",
+      };
+      setBenchmarkResult(initialResult);
+
+      showNotice(`API responded in ${apiDurationMs}ms! Background worker executing in event loop...`, "info");
+
+      // Poll event logs after 2200ms to extract completed listener timing
+      setTimeout(async () => {
+        const logRes = await fetch(`${API_BASE}/events/logs`);
+        if (logRes.ok) {
+          const logData = await logRes.json();
+          const found = (logData.logs || []).find(
+            (l) => l.taskId === createdId && l.event === "task-created"
+          );
+          if (found) {
+            const apiTime = new Date(found.apiResponseTimestamp).getTime();
+            const doneTime = new Date(found.listenerCompletedAt).getTime();
+            const realDeltaMs = doneTime - apiTime;
+
+            setBenchmarkResult({
+              ...initialResult,
+              listenerReceivedAt: found.listenerReceivedAt,
+              listenerCompletedAt: found.listenerCompletedAt,
+              realDeltaMs: realDeltaMs,
+              status: "completed",
+            });
+            showNotice(`✓ Listener finished! Proved ${realDeltaMs}ms decoupled from API response.`, "success");
+            fetchEventLogs();
+          }
+        }
+        setBenchmarking(false);
+      }, benchmarkDelay + 300);
     } catch (err) {
-      showNotice("Benchmark error: " + err.message, "error");
-    } finally {
+      showNotice(err.message, "error");
       setBenchmarking(false);
     }
   };
 
-  const filteredTasks = tasks.filter((t) => {
-    if (filter === "completed") return t.completed;
-    if (filter === "pending") return !t.completed;
-    return true;
-  });
-
-  const completedCount = tasks.filter((t) => t.completed).length;
-  const pendingCount = tasks.length - completedCount;
+  // Compute metrics from current event logs
+  const totalEvents = eventLogs.length;
+  const createdEvents = eventLogs.filter((e) => e.event === "task-created").length;
+  const deletedEvents = eventLogs.filter((e) => e.event === "task-deleted").length;
+  const errorEvents = eventLogs.filter((e) => e.event === "error").length;
 
   return (
     <div className="app-shell">
-      {/* ── Top Minimal Header ── */}
+      {/* ── Top Header Bar ── */}
       <header className="header">
         <div className="header-brand">
-          <div className="brand-dot" />
-          <div>
-            <h1 className="brand-title">Task Management</h1>
-            <p className="brand-subtitle">Practical 9 • In-Memory Caching (node-cache) & Optimization</p>
+          <div className="brand-badge">P10</div>
+          <div className="brand-text">
+            <div className="brand-title">TaskFlow Architecture</div>
+            <div className="brand-subtitle">Node.js EventEmitter Asynchronous Pipeline</div>
           </div>
         </div>
 
-        {token && (
-          <div className="header-user-panel">
-            <div className="user-badge">
-              <span className="user-icon"><IconShield /></span>
-              <span className="user-email">{user?.email || "Authenticated User"}</span>
+        <div className="header-nav">
+          <button
+            className={`nav-tab-btn ${activeTab === "dashboard" ? "active" : ""}`}
+            onClick={() => setActiveTab("dashboard")}
+          >
+            Tasks & Workflow
+          </button>
+          <button
+            className={`nav-tab-btn ${activeTab === "events" ? "active" : ""}`}
+            onClick={() => setActiveTab("events")}
+          >
+            Async Event Stream
+            {eventLogs.length > 0 && <span className="tab-pill">{eventLogs.length}</span>}
+          </button>
+          <button
+            className={`nav-tab-btn ${activeTab === "benchmark" ? "active" : ""}`}
+            onClick={() => setActiveTab("benchmark")}
+          >
+            Stopwatch Benchmark
+          </button>
+          <button
+            className={`nav-tab-btn ${activeTab === "analysis" ? "active" : ""}`}
+            onClick={() => setActiveTab("analysis")}
+          >
+            Viva & Theory
+          </button>
+        </div>
+
+        <div className="header-actions">
+          {user ? (
+            <div className="user-profile">
+              <div className="user-avatar">{user.name.charAt(0).toUpperCase()}</div>
+              <div className="user-info">
+                <span className="user-name">{user.name}</span>
+                <span className="user-role">24CS034 • CSPIT</span>
+              </div>
+              <button className="logout-btn" onClick={handleLogout} title="Sign Out">
+                <IconLogOut />
+              </button>
             </div>
-            <button
-              type="button"
-              className="btn-subtle btn-logout"
-              onClick={handleLogout}
-              title="Sign out"
-            >
-              <IconLogOut /> Sign Out
-            </button>
-          </div>
-        )}
+          ) : (
+            <div className="guest-indicator">Student Evaluation Mode</div>
+          )}
+        </div>
       </header>
 
-      {/* ── Notification Toast ── */}
+      {/* ── Subtle Notification Bar ── */}
       {notice && (
-        <div className={`notice-banner notice-${notice.type}`}>
-          <span className="notice-icon">
-            {notice.type === "error" ? <IconAlert /> : <IconCheck />}
-          </span>
-          <span className="notice-text">{notice.text}</span>
-          <button type="button" className="notice-dismiss" onClick={() => setNotice(null)}>
-            ×
-          </button>
+        <div className={`notification-bar ${notice.type}`}>
+          <div className="notification-content">
+            <span className="notification-icon">
+              {notice.type === "success" && <IconCheck />}
+              {notice.type === "error" && <IconAlertCircle />}
+              {notice.type === "warning" && <IconZap />}
+              {notice.type === "info" && <IconBell />}
+            </span>
+            <span className="notification-text">{notice.text}</span>
+          </div>
+          <span className="notification-time">{notice.timestamp}</span>
         </div>
       )}
 
-      {/* ── Main Layout ── */}
-      <main className="main-content">
+      {/* ── Main Workspace ── */}
+      <main className="main-container">
+        {/* ── Unauthenticated Welcome / Login State ── */}
         {!token ? (
-          /* ── Unauthenticated State: Minimal Auth Card ── */
-          <div className="auth-card-container">
+          <div className="auth-card-wrap">
             <div className="auth-card">
+              <div className="auth-header">
+                <div className="auth-badge">Authentication Pipeline</div>
+                <h2 className="auth-title">Task Management Portal</h2>
+                <p className="auth-subtitle">
+                  Practical 10: Asynchronous Processing with Event-Driven Architecture (CO4 / PO3, PO5)
+                </p>
+              </div>
+
               <div className="auth-tabs">
                 <button
-                  type="button"
                   className={`auth-tab ${authMode === "login" ? "active" : ""}`}
                   onClick={() => setAuthMode("login")}
                 >
                   Sign In
                 </button>
                 <button
-                  type="button"
                   className={`auth-tab ${authMode === "register" ? "active" : ""}`}
                   onClick={() => setAuthMode("register")}
                 >
-                  Register
+                  Register Student Account
                 </button>
               </div>
 
-              <div className="auth-body">
-                <div className="auth-intro">
-                  <h2>{authMode === "login" ? "Welcome back" : "Create an account"}</h2>
-                  <p>
-                    {authMode === "login"
-                      ? "Enter your credentials to access protected task routes and test in-memory caching."
-                      : "Register with email and password to receive a signed JWT token."}
-                  </p>
-                </div>
-
-                <form
-                  onSubmit={authMode === "login" ? handleLogin : handleRegister}
-                  className="auth-form"
-                >
-                  {authMode === "register" && (
-                    <div className="input-group">
-                      <label htmlFor="reg-name">Full Name (Optional)</label>
-                      <input
-                        id="reg-name"
-                        type="text"
-                        placeholder="e.g. Samarth Kalavadia"
-                        value={authName}
-                        onChange={(e) => setAuthName(e.target.value)}
-                        autoComplete="name"
-                      />
-                    </div>
-                  )}
-
-                  <div className="input-group">
-                    <label htmlFor="auth-email">Email Address</label>
+              <form onSubmit={handleAuthSubmit} className="auth-form">
+                {authMode === "register" && (
+                  <div className="form-group">
+                    <label className="form-label">Full Name</label>
                     <input
-                      id="auth-email"
-                      type="email"
-                      placeholder="user@example.com"
-                      value={authEmail}
-                      onChange={(e) => setAuthEmail(e.target.value)}
+                      id="reg-name"
+                      type="text"
+                      className="form-input"
+                      placeholder="e.g. Samarth Kalavadia"
+                      value={authName}
+                      onChange={(e) => setAuthName(e.target.value)}
                       required
-                      autoComplete="email"
                     />
                   </div>
-
-                  <div className="input-group">
-                    <label htmlFor="auth-password">Password</label>
-                    <input
-                      id="auth-password"
-                      type="password"
-                      placeholder={authMode === "register" ? "At least 6 characters" : "••••••••"}
-                      value={authPassword}
-                      onChange={(e) => setAuthPassword(e.target.value)}
-                      required
-                      autoComplete={authMode === "login" ? "current-password" : "new-password"}
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="btn-primary auth-submit-btn"
-                    disabled={authSubmitting}
-                  >
-                    {authSubmitting
-                      ? "Processing..."
-                      : authMode === "login"
-                      ? "Sign In"
-                      : "Create Account"}
-                  </button>
-                </form>
-
-                <div className="auth-footer-notes">
-                  <div className="badge-row">
-                    <span className="meta-pill">node-cache (60s TTL)</span>
-                    <span className="meta-pill">Write Invalidation</span>
-                    <span className="meta-pill">Latency Benchmarking</span>
-                  </div>
+                )}
+                <div className="form-group">
+                  <label className="form-label">Email Address</label>
+                  <input
+                    id="auth-email"
+                    type="email"
+                    className="form-input"
+                    placeholder="student@charusat.edu.in"
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                    required
+                  />
                 </div>
+                <div className="form-group">
+                  <label className="form-label">Password</label>
+                  <input
+                    id="auth-password"
+                    type="password"
+                    className="form-input"
+                    placeholder="••••••••••••"
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <button type="submit" className="auth-submit-btn" disabled={authSubmitting}>
+                  {authSubmitting
+                    ? "Authenticating..."
+                    : authMode === "login"
+                    ? "Authenticate & Access API"
+                    : "Create Account & Start Session"}
+                </button>
+              </form>
+
+              <div className="auth-footer-notes">
+                <span>✓ Node.js Native EventEmitter</span>
+                <span>✓ Non-Blocking Request Path</span>
+                <span>✓ Decoupled Async Handlers</span>
               </div>
             </div>
           </div>
         ) : (
-          /* ── Authenticated State: Practical 9 Caching Dashboard ── */
-          <div className="dashboard-grid">
-            {/* Left Column: Form & Cache Controls */}
-            <aside className="sidebar-column">
-              {/* Task Creation Form */}
-              <div className="card task-create-card">
-                <div className="card-header">
-                  <h3 className="card-title">New Task</h3>
-                  <span className="card-badge">Write Invalidates Cache</span>
-                </div>
-                <form onSubmit={handleAddTask} className="task-form">
-                  <div className="input-group">
-                    <label htmlFor="task-title">Task Title *</label>
-                    <input
-                      id="task-title"
-                      type="text"
-                      placeholder="e.g. Implement node-cache stdTTL: 60"
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                    />
-                  </div>
-                  <div className="input-group">
-                    <label htmlFor="task-desc">Description (optional)</label>
-                    <textarea
-                      id="task-desc"
-                      rows={2}
-                      placeholder="e.g. Invalidate key 'all_tasks' on POST, PUT, DELETE"
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                    />
-                  </div>
-                  <button type="submit" className="btn-primary" disabled={loading}>
-                    <IconPlus /> Add Task
-                  </button>
-                </form>
-              </div>
-
-              {/* Cache Management Controls Card */}
-              <div className="card lab-info-card">
-                <div className="card-header">
-                  <h4 className="lab-info-title">In-Memory Cache Controls</h4>
-                  <span className="ttl-pill">{cacheStats.stdTTL}s TTL</span>
-                </div>
-
-                <div className="cache-stats-compact">
-                  <div className="stat-item">
-                    <span className="stat-label">Hits</span>
-                    <span className="stat-val text-success">{cacheStats.hits}</span>
-                  </div>
-                  <div className="stat-item">
-                    <span className="stat-label">Misses</span>
-                    <span className="stat-val text-warning">{cacheStats.misses}</span>
-                  </div>
-                  <div className="stat-item">
-                    <span className="stat-label">Hit Ratio</span>
-                    <span className="stat-val">{cacheStats.hitRatio}</span>
-                  </div>
-                  <div className="stat-item">
-                    <span className="stat-label">Active Keys</span>
-                    <span className="stat-val">{cacheStats.activeKeysCount}</span>
-                  </div>
-                </div>
-
-                <div className="cache-toggle-row">
-                  <label className="toggle-label" htmlFor="toggle-bypass">
-                    <input
-                      id="toggle-bypass"
-                      type="checkbox"
-                      checked={bypassCache}
-                      onChange={(e) => setBypassCache(e.target.checked)}
-                    />
-                    <span>Bypass Cache (?nocache=true)</span>
-                  </label>
-                </div>
-
-                <div className="lab-action-row">
-                  <button
-                    type="button"
-                    className="btn-subtle"
-                    onClick={() => fetchTasks()}
-                    disabled={loading}
-                    title="Send GET /tasks request"
-                  >
-                    <IconRefresh /> GET /tasks
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-outline-danger"
-                    onClick={handleFlushCache}
-                    title="Flush all node-cache keys"
-                  >
-                    Flush Cache
-                  </button>
-                </div>
-
-                <div className="benchmark-trigger-row">
-                  <button
-                    type="button"
-                    className="btn-benchmark"
-                    onClick={handleRunBenchmark}
-                    disabled={benchmarking}
-                  >
-                    <IconZap /> {benchmarking ? "Benchmarking..." : "Run 3-Sample Benchmark"}
-                  </button>
-                </div>
-              </div>
-            </aside>
-
-            {/* Right Column: Performance Monitor & Task List */}
-            <section className="main-tasks-column">
-              {/* Performance Indicator Bar */}
-              <div className="cache-status-card">
-                <div className="cache-status-header">
-                  <div className="status-indicator-group">
-                    <span className="indicator-title">Last Request:</span>
-                    {cacheMeta.status === "HIT" && (
-                      <span className="badge-hit">CACHE HIT</span>
-                    )}
-                    {cacheMeta.status === "MISS" && (
-                      <span className="badge-miss">CACHE MISS</span>
-                    )}
-                    {cacheMeta.status === "BYPASS" && (
-                      <span className="badge-bypass">CACHE BYPASS</span>
-                    )}
-                    {!cacheMeta.status && (
-                      <span className="badge-idle">IDLE</span>
-                    )}
+          <>
+            {/* ── TAB 1: Tasks & Workflow ── */}
+            {activeTab === "dashboard" && (
+              <div className="content-grid">
+                {/* Left Panel: Task Creation Form */}
+                <div className="panel left-panel">
+                  <div className="panel-header">
+                    <h3 className="panel-title">Create Task & Emit Event</h3>
+                    <span className="panel-tag">POST /tasks</span>
                   </div>
 
-                  <div className="timing-readouts">
-                    <span className="timing-item">
-                      Server: <strong>{cacheMeta.serverTime || "--"}</strong>
-                    </span>
-                    <span className="timing-item">
-                      Client Latency: <strong>{cacheMeta.clientTime || "--"}</strong>
-                    </span>
-                  </div>
-                </div>
+                  <form onSubmit={handleCreateTask} className="task-form">
+                    <div className="form-group">
+                      <label className="form-label">Task Title</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="e.g. Synchronize event queue buffers"
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        required
+                      />
+                    </div>
 
-                {cacheMeta.key && (
-                  <div className="cache-key-preview">
-                    <span>Cache Key: <code>{cacheMeta.key}</code></span>
-                    <span className="key-ttl-note">Expires in ≤ {cacheStats.stdTTL}s</span>
-                  </div>
-                )}
-              </div>
+                    <div className="form-group">
+                      <label className="form-label">Description (Optional)</label>
+                      <textarea
+                        className="form-textarea"
+                        placeholder="Context or task payload details..."
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        rows={2}
+                      />
+                    </div>
 
-              {/* Benchmark Results Table (Steps 5, 6, 7) */}
-              {benchmarkResult && (
-                <div className="card benchmark-card">
-                  <div className="card-header">
-                    <h4 className="card-title">Empirical Latency Comparison (3 Sample Readings)</h4>
-                    <span className="badge-speedup">+{benchmarkResult.speedup}% Faster</span>
-                  </div>
-                  <table className="benchmark-table">
-                    <thead>
-                      <tr>
-                        <th>Iteration</th>
-                        <th>Uncached (MongoDB)</th>
-                        <th>Cached (node-cache)</th>
-                        <th>Difference</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr>
-                        <td>Sample 1</td>
-                        <td>{benchmarkResult.uncached[0]} ms</td>
-                        <td className="text-success font-mono">{benchmarkResult.cached[0]} ms</td>
-                        <td>-{(benchmarkResult.uncached[0] - benchmarkResult.cached[0]).toFixed(1)} ms</td>
-                      </tr>
-                      <tr>
-                        <td>Sample 2</td>
-                        <td>{benchmarkResult.uncached[1]} ms</td>
-                        <td className="text-success font-mono">{benchmarkResult.cached[1]} ms</td>
-                        <td>-{(benchmarkResult.uncached[1] - benchmarkResult.cached[1]).toFixed(1)} ms</td>
-                      </tr>
-                      <tr>
-                        <td>Sample 3</td>
-                        <td>{benchmarkResult.uncached[2]} ms</td>
-                        <td className="text-success font-mono">{benchmarkResult.cached[2]} ms</td>
-                        <td>-{(benchmarkResult.uncached[2] - benchmarkResult.cached[2]).toFixed(1)} ms</td>
-                      </tr>
-                      <tr className="table-summary-row">
-                        <td><strong>Average</strong></td>
-                        <td><strong>{benchmarkResult.avgUncached} ms</strong></td>
-                        <td className="text-success font-mono"><strong>{benchmarkResult.avgCached} ms</strong></td>
-                        <td className="badge-speedup-cell"><strong>{benchmarkResult.speedup}% Speedup</strong></td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {/* Task Filter Toolbar */}
-              <div className="task-toolbar">
-                <div className="stats-pills">
-                  <span className="stat-pill">Total: <strong>{tasks.length}</strong></span>
-                  <span className="stat-pill">Pending: <strong>{pendingCount}</strong></span>
-                  <span className="stat-pill">Completed: <strong>{completedCount}</strong></span>
-                </div>
-
-                <div className="filter-group">
-                  <button
-                    type="button"
-                    className={`filter-btn ${filter === "all" ? "active" : ""}`}
-                    onClick={() => setFilter("all")}
-                  >
-                    All
-                  </button>
-                  <button
-                    type="button"
-                    className={`filter-btn ${filter === "pending" ? "active" : ""}`}
-                    onClick={() => setFilter("pending")}
-                  >
-                    Pending
-                  </button>
-                  <button
-                    type="button"
-                    className={`filter-btn ${filter === "completed" ? "active" : ""}`}
-                    onClick={() => setFilter("completed")}
-                  >
-                    Completed
-                  </button>
-                </div>
-              </div>
-
-              {/* Task Items */}
-              {loading && tasks.length === 0 ? (
-                <div className="empty-state">
-                  <div className="loading-spinner" />
-                  <p>Loading tasks from API...</p>
-                </div>
-              ) : filteredTasks.length === 0 ? (
-                <div className="empty-state">
-                  <p className="empty-title">No tasks found</p>
-                  <p className="empty-desc">
-                    {filter === "all"
-                      ? "Create your first task using the form on the left."
-                      : `No ${filter} tasks right now.`}
-                  </p>
-                </div>
-              ) : (
-                <div className="task-list">
-                  {filteredTasks.map((t) => (
-                    <div
-                      key={t._id}
-                      className={`task-row ${t.completed ? "task-completed" : ""}`}
-                    >
-                      <button
-                        type="button"
-                        className={`btn-checkbox ${t.completed ? "checked" : ""}`}
-                        onClick={() => handleToggleComplete(t)}
-                        title={t.completed ? "Mark as pending" : "Mark as completed"}
-                      >
-                        {t.completed && <IconCheck />}
-                      </button>
-
-                      <div className="task-details">
-                        <span className="task-name">{t.title}</span>
-                        {t.description && (
-                          <span className="task-note">{t.description}</span>
-                        )}
-                        <span className="task-time">
-                          {t.createdAt
-                            ? new Date(t.createdAt).toLocaleDateString(undefined, {
-                                month: "short",
-                                day: "numeric",
-                              })
-                            : "Recent"}
-                        </span>
+                    {/* Step 5: Artificial Delay Controller */}
+                    <div className="form-group">
+                      <div className="delay-label-row">
+                        <label className="form-label">Simulated Listener Delay (Step 5)</label>
+                        <span className="delay-value-badge">{listenerDelay} ms</span>
                       </div>
-
-                      <div className="task-row-actions">
-                        <button
-                          type="button"
-                          className="btn-action-pill"
-                          onClick={() => handleInspectSingleTask(t._id)}
-                          title="Test Supplementary Problem 1: GET /tasks/:id Single Cache"
-                        >
-                          Inspect Single Cache
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-action-icon"
-                          onClick={() => {
-                            setEditingTask(t);
-                            setEditTitle(t.title);
-                            setEditDescription(t.description || "");
-                          }}
-                          title="Edit Task"
-                        >
-                          <IconEdit />
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-action-icon btn-action-delete"
-                          onClick={() => handleDeleteTask(t._id)}
-                          title="Delete Task"
-                        >
-                          <IconTrash />
-                        </button>
+                      <input
+                        type="range"
+                        min="500"
+                        max="5000"
+                        step="500"
+                        value={listenerDelay}
+                        onChange={(e) => setListenerDelay(Number(e.target.value))}
+                        className="delay-slider"
+                      />
+                      <div className="delay-hints">
+                        <span>500ms (Quick)</span>
+                        <span className="delay-recommended">2000ms (PDF Spec)</span>
+                        <span>5000ms (Heavy I/O)</span>
                       </div>
                     </div>
-                  ))}
+
+                    {/* Supplementary Problem 2: Error simulation toggle */}
+                    <div className="form-checkbox-row">
+                      <input
+                        type="checkbox"
+                        id="chk-sim-error"
+                        checked={simulateErrorInCreate}
+                        onChange={(e) => setSimulateErrorInCreate(e.target.checked)}
+                      />
+                      <label htmlFor="chk-sim-error" className="checkbox-label">
+                        Simulate exception inside event handler (Tests error listener)
+                      </label>
+                    </div>
+
+                    <button type="submit" className="submit-btn" disabled={loading}>
+                      <IconPlus />
+                      <span>{loading ? "Saving & Emitting..." : "Create Task (Immediate 201 Response)"}</span>
+                    </button>
+                  </form>
+
+                  {/* Architecture Diagram Snippet matching PDF */}
+                  <div className="diagram-box">
+                    <div className="diagram-title">Decoupled Architecture Flow</div>
+                    <div className="diagram-flow">
+                      <div className="flow-step">1. POST /tasks request</div>
+                      <div className="flow-arrow">↓</div>
+                      <div className="flow-step">2. Save task to MongoDB</div>
+                      <div className="flow-arrow">↓</div>
+                      <div className="flow-split">
+                        <div className="split-left">
+                          <strong>emit('task-created')</strong>
+                          <div className="sub-desc">Fires event & returns immediately</div>
+                        </div>
+                        <div className="split-arrow">──►</div>
+                        <div className="split-right">
+                          <span className="code-pill">API responds 201</span>
+                          <div className="sub-desc">Latency: ~15ms</div>
+                        </div>
+                      </div>
+                      <div className="flow-arrow">↓ (asynchronous, after response)</div>
+                      <div className="flow-step listener-step">
+                        <strong>Notification Listener</strong>
+                        <div className="sub-desc">Logs task title, timestamp, assigned user</div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              )}
-            </section>
-          </div>
+
+                {/* Right Panel: Task List & Quick Live Actions */}
+                <div className="panel right-panel">
+                  <div className="panel-header">
+                    <div className="panel-title-group">
+                      <h3 className="panel-title">Active Tasks</h3>
+                      <span className="count-chip">{tasks.length}</span>
+                    </div>
+                    <div className="panel-actions">
+                      <button className="icon-btn" onClick={fetchTasks} title="Refresh Task List">
+                        <IconRefresh />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Quick Action Test Buttons */}
+                  <div className="quick-actions-bar">
+                    <button className="quick-action-btn primary" onClick={handleRunBenchmark}>
+                      <IconZap /> Run Non-Blocking Benchmark
+                    </button>
+                    <button className="quick-action-btn danger" onClick={handleTriggerErrorSimulation}>
+                      <IconAlertCircle /> Test Error Event Listener
+                    </button>
+                  </div>
+
+                  {/* Task Items */}
+                  <div className="task-list">
+                    {loading && tasks.length === 0 ? (
+                      <div className="empty-state">Loading tasks from database...</div>
+                    ) : tasks.length === 0 ? (
+                      <div className="empty-state">
+                        <div className="empty-title">No tasks found</div>
+                        <p className="empty-subtitle">
+                          Create your first task on the left to see the instant API response and decoupled background notification!
+                        </p>
+                      </div>
+                    ) : (
+                      tasks.map((task) => (
+                        <div key={task._id || task.id} className="task-card">
+                          <div className="task-main">
+                            <h4 className="task-title">{task.title}</h4>
+                            {task.description && <p className="task-desc">{task.description}</p>}
+                            <div className="task-meta">
+                              <span className="meta-id">ID: {(task._id || task.id).slice(-6)}</span>
+                              <span className="meta-date">
+                                Created: {new Date(task.createdAt || Date.now()).toLocaleTimeString()}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="task-actions">
+                            <button
+                              className="delete-btn"
+                              onClick={() => handleDeleteTask(task._id || task.id)}
+                              title="Delete Task & Emit 'task-deleted' Event"
+                            >
+                              <IconTrash />
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── TAB 2: Async Event Stream & Audit Log ── */}
+            {activeTab === "events" && (
+              <div className="events-stream-view">
+                {/* Stats Summary Bar */}
+                <div className="stream-stats-grid">
+                  <div className="stat-card">
+                    <span className="stat-label">Total Emitted Events</span>
+                    <span className="stat-number">{totalEvents}</span>
+                    <span className="stat-sub">Buffered in-memory</span>
+                  </div>
+                  <div className="stat-card">
+                    <span className="stat-label">'task-created' Events</span>
+                    <span className="stat-number text-success">{createdEvents}</span>
+                    <span className="stat-sub">Step 2 & 3 Handlers</span>
+                  </div>
+                  <div className="stat-card">
+                    <span className="stat-label">'task-deleted' Events</span>
+                    <span className="stat-number text-indigo">{deletedEvents}</span>
+                    <span className="stat-sub">Supplementary Prob 1</span>
+                  </div>
+                  <div className="stat-card">
+                    <span className="stat-label">'error' Events Caught</span>
+                    <span className="stat-number text-danger">{errorEvents}</span>
+                    <span className="stat-sub">Resilient Error Listener</span>
+                  </div>
+                </div>
+
+                {/* Event Table Card */}
+                <div className="stream-table-card">
+                  <div className="stream-table-header">
+                    <div>
+                      <h3 className="panel-title">Real-Time EventEmitter Audit Stream</h3>
+                      <p className="table-subtitle">
+                        Demonstrating that the API responds before the listener finishes executing (timestamp proof).
+                      </p>
+                    </div>
+                    <div className="stream-controls">
+                      <label className="poll-toggle">
+                        <input
+                          type="checkbox"
+                          checked={autoPollEvents}
+                          onChange={(e) => setAutoPollEvents(e.target.checked)}
+                        />
+                        <span>Auto-refresh (2s)</span>
+                      </label>
+                      <button className="small-action-btn" onClick={fetchEventLogs} title="Refresh">
+                        <IconRefresh /> Refresh
+                      </button>
+                      <button className="small-action-btn danger" onClick={handleClearEventLogs}>
+                        Clear Buffer
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="table-wrap">
+                    <table className="stream-table">
+                      <thead>
+                        <tr>
+                          <th>Event Type</th>
+                          <th>Task Title / ID</th>
+                          <th>API Response Time (T₀)</th>
+                          <th>Listener Received</th>
+                          <th>Listener Completed</th>
+                          <th>Decoupled Delta (Δt)</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {eventLogs.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="table-empty">
+                              No background events recorded yet. Create or delete a task to inspect live events.
+                            </td>
+                          </tr>
+                        ) : (
+                          eventLogs.map((log) => {
+                            const apiTime = log.apiResponseTimestamp
+                              ? new Date(log.apiResponseTimestamp).getTime()
+                              : null;
+                            const doneTime = log.listenerCompletedAt
+                              ? new Date(log.listenerCompletedAt).getTime()
+                              : null;
+                            const deltaMs = apiTime && doneTime ? doneTime - apiTime : log.delayMs;
+
+                            return (
+                              <tr key={log.id}>
+                                <td>
+                                  <span
+                                    className={`event-chip ${
+                                      log.event === "task-created"
+                                        ? "chip-created"
+                                        : log.event === "task-deleted"
+                                        ? "chip-deleted"
+                                        : "chip-error"
+                                    }`}
+                                  >
+                                    {log.event}
+                                  </span>
+                                </td>
+                                <td className="task-col">
+                                  <strong>{log.title}</strong>
+                                  <div className="task-user-sub">User: {log.user}</div>
+                                </td>
+                                <td className="mono-time">
+                                  {log.apiResponseTimestamp
+                                    ? new Date(log.apiResponseTimestamp).toLocaleTimeString() +
+                                      "." +
+                                      new Date(log.apiResponseTimestamp).getMilliseconds()
+                                    : "N/A"}
+                                </td>
+                                <td className="mono-time">
+                                  {log.listenerReceivedAt
+                                    ? new Date(log.listenerReceivedAt).toLocaleTimeString() +
+                                      "." +
+                                      new Date(log.listenerReceivedAt).getMilliseconds()
+                                    : "N/A"}
+                                </td>
+                                <td className="mono-time">
+                                  {log.listenerCompletedAt
+                                    ? new Date(log.listenerCompletedAt).toLocaleTimeString() +
+                                      "." +
+                                      new Date(log.listenerCompletedAt).getMilliseconds()
+                                    : "Processing..."}
+                                </td>
+                                <td>
+                                  <span className="delta-badge">
+                                    +{deltaMs !== null ? deltaMs : log.delayMs} ms
+                                  </span>
+                                </td>
+                                <td>
+                                  <span
+                                    className={`status-chip ${
+                                      log.status === "completed" ? "chip-ok" : "chip-err"
+                                    }`}
+                                  >
+                                    {log.status === "completed" ? "✓ Handled Non-Blocking" : "⚠️ Error Handled"}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── TAB 3: Stopwatch Benchmark ── */}
+            {activeTab === "benchmark" && (
+              <div className="benchmark-view">
+                <div className="benchmark-hero">
+                  <div className="benchmark-hero-header">
+                    <div>
+                      <h3 className="hero-title">Empirical Non-Blocking Benchmark</h3>
+                      <p className="hero-subtitle">
+                        Validates Step 6: "Confirm and record that the API response timestamp appears before the listener's completion timestamp in the console."
+                      </p>
+                    </div>
+                    <button
+                      className="run-bench-btn"
+                      onClick={handleRunBenchmark}
+                      disabled={benchmarking}
+                    >
+                      <IconZap /> {benchmarking ? "Executing Benchmark..." : "Run Live Verification Benchmark"}
+                    </button>
+                  </div>
+
+                  {benchmarkResult && (
+                    <div className="benchmark-cards-grid">
+                      <div className="metric-box green">
+                        <div className="metric-title">API Response Roundtrip</div>
+                        <div className="metric-val">{benchmarkResult.apiDurationMs} ms</div>
+                        <div className="metric-sub">Immediate HTTP 201 Created</div>
+                      </div>
+
+                      <div className="metric-box amber">
+                        <div className="metric-title">Simulated Worker Delay</div>
+                        <div className="metric-val">{benchmarkResult.simulatedDelayMs} ms</div>
+                        <div className="metric-sub">setTimeout background queue</div>
+                      </div>
+
+                      <div className="metric-box purple">
+                        <div className="metric-title">Decoupling Delta (Δt)</div>
+                        <div className="metric-val">
+                          {benchmarkResult.realDeltaMs ? `${benchmarkResult.realDeltaMs} ms` : "Processing..."}
+                        </div>
+                        <div className="metric-sub">Time saved on critical path</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {benchmarkResult && (
+                    <div className="timeline-card">
+                      <h4 className="timeline-title">Event-Loop Execution Timeline</h4>
+                      <div className="timeline-steps">
+                        <div className="timeline-node complete">
+                          <div className="node-marker">1</div>
+                          <div className="node-body">
+                            <div className="node-head">HTTP POST /tasks Arrives</div>
+                            <div className="node-desc">Mongoose saves document to MongoDB.</div>
+                          </div>
+                        </div>
+
+                        <div className="timeline-node complete">
+                          <div className="node-marker">2</div>
+                          <div className="node-body">
+                            <div className="node-head">
+                              API Response Sent: <span className="mono-txt">{benchmarkResult.apiTimestamp}</span>
+                            </div>
+                            <div className="node-desc">
+                              Client receives 201 Created in <strong>{benchmarkResult.apiDurationMs}ms</strong>.
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="timeline-node complete">
+                          <div className="node-marker">3</div>
+                          <div className="node-body">
+                            <div className="node-head">taskEvents.emit('task-created', task)</div>
+                            <div className="node-desc">
+                              Synchronous listener receives event, registers background timer, and immediately returns.
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className={`timeline-node ${benchmarkResult.status === "completed" ? "complete" : "running"}`}>
+                          <div className="node-marker">4</div>
+                          <div className="node-body">
+                            <div className="node-head">
+                              Notification Listener Completes:{" "}
+                              <span className="mono-txt">
+                                {benchmarkResult.listenerCompletedAt || "Waiting for timer expiration..."}
+                              </span>
+                            </div>
+                            <div className="node-desc">
+                              Executed in Node.js Timers phase without blocking subsequent requests.
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ── TAB 4: Viva, Architecture & Analysis ── */}
+            {activeTab === "analysis" && (
+              <div className="analysis-view">
+                <div className="analysis-card">
+                  <div className="analysis-card-header">
+                    <span className="section-pill">Conceptual Understanding</span>
+                    <h3 className="analysis-title">Answers to Key Questions & Viva Analysis</h3>
+                  </div>
+
+                  <div className="qa-list">
+                    {/* Q1 */}
+                    <div className="qa-item">
+                      <div className="qa-question">
+                        Q1. Why does emitting an event not block the API response, even though both run on the same Node.js process?
+                      </div>
+                      <div className="qa-answer">
+                        <p>
+                          <strong>Explanation:</strong> Node.js operates on a single-threaded event loop. When <code>taskEvents.emit('task-created', task)</code> is invoked, Node immediately executes the listener callback. Because the notification logic inside the listener delegates its time-consuming operation to an asynchronous API like <code>setTimeout()</code> (or asynchronous network/email I/O), the timer is scheduled in the Event Loop’s <strong>Timers phase</strong>.
+                        </p>
+                        <p>
+                          Control returns instantly to the caller without waiting for the timer or I/O to finish. Since the HTTP response (<code>res.status(201).json()</code>) has already been dispatched into the socket buffer, the client receives the response immediately while the background work finishes later.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Q2 */}
+                    <div className="qa-item">
+                      <div className="qa-question">
+                        Q2. What would happen to API response time if the notification logic were placed directly inside the POST route instead of in an event handler?
+                      </div>
+                      <div className="qa-answer">
+                        <p>
+                          <strong>Explanation:</strong> If the notification logic (e.g., SMTP email dispatch, SMS API calls, or 2000ms delay) were placed sequentially before <code>res.status(201).json()</code>:
+                        </p>
+                        <ul>
+                          <li>
+                            The API response time would increase by at least the duration of the notification (from <strong>~15ms to &gt;2015ms</strong>).
+                          </li>
+                          <li>
+                            Every client would be forced to wait for secondary side-effects to conclude before receiving confirmation that their task was saved.
+                          </li>
+                          <li>
+                            If the notification service suffered network latency or outages, the main request would hang or fail entirely, degrading user experience.
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+
+                    {/* Q3 */}
+                    <div className="qa-item">
+                      <div className="qa-question">
+                        Q3. Why is EventEmitter a reasonable choice for this scale of application, but not for a production system handling millions of events per day?
+                      </div>
+                      <div className="qa-answer">
+                        <p>
+                          <strong>Explanation:</strong>
+                        </p>
+                        <ul>
+                          <li>
+                            <strong>Why it works here:</strong> <code>EventEmitter</code> is built directly into Node.js, requires zero external services (no Redis/RabbitMQ setup), has near-zero overhead, and is perfect for in-process decoupling in single-instance apps.
+                          </li>
+                          <li>
+                            <strong>Why it fails at million-event production scale:</strong>
+                            <ol>
+                              <li>
+                                <em>No Persistence:</em> Events are held purely in process RAM. If the Node.js server crashes or restarts, all pending in-flight events are permanently lost.
+                              </li>
+                              <li>
+                                <em>Single Process Bound:</em> In a clustered or multi-container environment (e.g. Kubernetes with multiple replicas), an event emitted on Pod A cannot be consumed or coordinated by Pod B.
+                              </li>
+                              <li>
+                                <em>No Concurrency / Rate Limiting:</em> High spikes can cause memory exhaustion and block the event loop. Production systems require distributed, persistent message brokers such as <strong>RabbitMQ, Redis Streams/BullMQ, or Apache Kafka</strong>.
+                              </li>
+                            </ol>
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </main>
-
-      {/* ── Single Task Inspection Modal (Supplementary Problem 1) ── */}
-      {singleTaskInspect && (
-        <div className="modal-backdrop" onClick={() => setSingleTaskInspect(null)}>
-          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3 className="modal-title">Single Task Caching (GET /tasks/:id)</h3>
-              <button
-                type="button"
-                className="modal-close"
-                onClick={() => setSingleTaskInspect(null)}
-              >
-                ×
-              </button>
-            </div>
-            <div className="modal-body-content">
-              <div className="single-cache-status-row">
-                <span>Cache Result:</span>
-                <span className={singleTaskInspect.cacheStatus === "HIT" ? "badge-hit" : "badge-miss"}>
-                  CACHE {singleTaskInspect.cacheStatus}
-                </span>
-                <span className="text-muted">Latency: {singleTaskInspect.clientTime}</span>
-              </div>
-              <div className="single-task-details">
-                <p><strong>Title:</strong> {singleTaskInspect.task?.title}</p>
-                <p><strong>Status:</strong> {singleTaskInspect.task?.completed ? "Completed" : "Pending"}</p>
-                <p><strong>Cache Key:</strong> <code>task_{singleTaskInspect.taskId}</code></p>
-              </div>
-              <p className="single-cache-hint">
-                Tip: Click "Inspect Single Cache" a second time to see it served instantly as a <strong>CACHE HIT</strong>. If you update or delete this task, the single-task key is invalidated.
-              </p>
-            </div>
-            <div className="modal-footer">
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => setSingleTaskInspect(null)}
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Edit Task Modal ── */}
-      {editingTask && (
-        <div className="modal-backdrop" onClick={() => setEditingTask(null)}>
-          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3 className="modal-title">Edit Task</h3>
-              <button
-                type="button"
-                className="modal-close"
-                onClick={() => setEditingTask(null)}
-              >
-                ×
-              </button>
-            </div>
-            <form onSubmit={handleSaveEdit} className="modal-form">
-              <div className="input-group">
-                <label htmlFor="edit-task-title">Title</label>
-                <input
-                  id="edit-task-title"
-                  type="text"
-                  value={editTitle}
-                  onChange={(e) => setEditTitle(e.target.value)}
-                  autoFocus
-                />
-              </div>
-              <div className="input-group">
-                <label htmlFor="edit-task-desc">Description</label>
-                <textarea
-                  id="edit-task-desc"
-                  rows={3}
-                  value={editDescription}
-                  onChange={(e) => setEditDescription(e.target.value)}
-                />
-              </div>
-              <div className="modal-footer">
-                <button
-                  type="button"
-                  className="btn-subtle"
-                  onClick={() => setEditingTask(null)}
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="btn-primary">
-                  Save Changes (Invalidates Cache)
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
