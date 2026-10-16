@@ -3,6 +3,8 @@ const router = express.Router();
 const Task = require("../models/Task");
 const auth = require("../middleware/auth");
 const cache = require("../cache");
+const taskEvents = require("../events");
+const { getEventLogs, clearEventLogs } = require("../listeners");
 const {
     validateCreateTask,
     validateUpdateTask,
@@ -14,6 +16,33 @@ const getDurationMs = (startTime) => {
     const diff = process.hrtime(startTime);
     return ((diff[0] * 1e3) + (diff[1] * 1e-6)).toFixed(2);
 };
+
+/**
+ * @route   GET /tasks/events/logs
+ * @desc    Fetch real-time event logs for background EventEmitter activity
+ * @access  Public / Monitor
+ */
+router.get("/events/logs", (req, res) => {
+    res.status(200).json({
+        status: "success",
+        total: getEventLogs().length,
+        logs: getEventLogs()
+    });
+});
+
+/**
+ * @route   POST /tasks/events/clear
+ * @desc    Clear background event audit logs
+ * @access  Public / Monitor
+ */
+router.post("/events/clear", (req, res) => {
+    clearEventLogs();
+    res.status(200).json({
+        message: "Event audit logs cleared successfully",
+        total: 0,
+        logs: []
+    });
+});
 
 /**
  * @route   GET /tasks/cache/stats
@@ -153,7 +182,7 @@ router.get("/:id", validateTaskId, async (req, res, next) => {
 
 /**
  * @route   POST /tasks
- * @desc    Create a new task and invalidate cached task collections (Step 4)
+ * @desc    Create a new task and asynchronously emit 'task-created' event (Practical 10 Step 3)
  * @access  Private
  */
 router.post("/", validateCreateTask, async (req, res, next) => {
@@ -166,16 +195,34 @@ router.post("/", validateCreateTask, async (req, res, next) => {
         });
         const savedTask = await task.save();
 
-        // Step 4: Invalidate cache after successful write
+        // Invalidate cache after successful write
         cache.del("all_tasks");
         if (req.user) {
             cache.del(`tasks_${req.user.id}`);
         }
 
+        // Step 3: Record API response timestamp and respond immediately
+        const apiResponseTimestamp = new Date().toISOString();
+        console.log(`[API] Response sent at ${apiResponseTimestamp}`);
+
+        // Immediate HTTP response returned to client BEFORE background listener finishes
         res.status(201).json({
             message: "Task created successfully",
-            task: savedTask
+            task: savedTask,
+            apiResponseTimestamp: apiResponseTimestamp
         });
+
+        // Step 3: Emit 'task-created' event right after responding
+        const eventPayload = savedTask.toObject ? savedTask.toObject() : { ...savedTask };
+        eventPayload.apiResponseTimestamp = apiResponseTimestamp;
+        if (req.body.simulateError) {
+            eventPayload.simulateError = true;
+        }
+        if (req.body.customDelay !== undefined) {
+            eventPayload.customDelay = req.body.customDelay;
+        }
+
+        taskEvents.emit("task-created", eventPayload);
     } catch (error) {
         next(error);
     }
@@ -202,7 +249,7 @@ router.put("/:id", validateUpdateTask, async (req, res, next) => {
             });
         }
 
-        // Step 4 & Supplementary: Invalidate collection cache and individual task cache
+        // Invalidate collection cache and individual task cache
         cache.del("all_tasks");
         if (req.user) {
             cache.del(`tasks_${req.user.id}`);
@@ -220,7 +267,7 @@ router.put("/:id", validateUpdateTask, async (req, res, next) => {
 
 /**
  * @route   DELETE /tasks/:id
- * @desc    Delete a task and invalidate cache keys
+ * @desc    Delete a task and emit 'task-deleted' background event (Supplementary Problem 1)
  * @access  Private
  */
 router.delete("/:id", validateTaskId, async (req, res, next) => {
@@ -232,15 +279,29 @@ router.delete("/:id", validateTaskId, async (req, res, next) => {
             });
         }
 
-        // Step 4 & Supplementary: Invalidate collection cache and individual task cache
+        // Invalidate collection cache and individual task cache
         cache.del("all_tasks");
         if (req.user) {
             cache.del(`tasks_${req.user.id}`);
         }
         cache.del(`task_${req.params.id}`);
 
+        const apiResponseTimestamp = new Date().toISOString();
+        console.log(`[API] Delete response sent at ${apiResponseTimestamp} for task ${task._id}`);
+
+        // Immediate response
         res.status(200).json({
-            message: "Task deleted successfully"
+            message: "Task deleted successfully",
+            deletedTask: task,
+            apiResponseTimestamp: apiResponseTimestamp
+        });
+
+        // Emit 'task-deleted' event after responding
+        taskEvents.emit("task-deleted", {
+            id: task._id.toString(),
+            title: task.title,
+            user: req.user ? req.user.id : "Anonymous",
+            apiResponseTimestamp: apiResponseTimestamp
         });
     } catch (error) {
         next(error);

@@ -17,6 +17,10 @@ app.use(cors());
 app.use(express.json());
 app.use(logger);
 
+// Practical 10: Register EventEmitter background listeners at startup
+const { getEventLogs, clearEventLogs } = require("./listeners");
+const taskEvents = require("./events");
+
 // MongoDB Connection
 mongoose.connect(process.env.MONGODB_URI)
     .then(() => {
@@ -31,6 +35,41 @@ const cache = require("./cache");
 // Health check endpoint
 app.get("/health", (req, res) => {
     res.status(200).json({ status: "OK", timestamp: new Date().toISOString() });
+});
+
+// Practical 10: Event Stream & Audit Log Endpoints for Live UI and Postman
+app.get("/events/logs", (req, res) => {
+    res.status(200).json({
+        status: "success",
+        total: getEventLogs().length,
+        logs: getEventLogs()
+    });
+});
+
+app.post("/events/clear", (req, res) => {
+    clearEventLogs();
+    res.status(200).json({
+        message: "Event audit logs cleared successfully",
+        total: 0,
+        logs: []
+    });
+});
+
+app.post("/events/simulate-error", (req, res) => {
+    const errorPayload = {
+        _id: "simulated_err_" + Date.now(),
+        title: req.body.title || "Erroneous Task Simulation",
+        user: req.body.user || "SimulatedUser",
+        simulateError: true,
+        apiResponseTimestamp: new Date().toISOString()
+    };
+    console.log(`[API] Error simulation request acknowledged at ${errorPayload.apiResponseTimestamp}`);
+    res.status(202).json({
+        message: "Simulated error event emitted. Watch server console and error listener logs.",
+        apiResponseTimestamp: errorPayload.apiResponseTimestamp,
+        payload: errorPayload
+    });
+    taskEvents.emit("task-created", errorPayload);
 });
 
 // Cache Debug & Analytics Endpoints (Supplementary Problem 2 & 3)
